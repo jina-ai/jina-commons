@@ -12,6 +12,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",
     ],
-    packages=find_packages(where='.', include='jina.*'),
+    packages=find_packages(include='jina_commons.*'),
     python_requires=">=3.7",
+    zip_safe=False,
 )
