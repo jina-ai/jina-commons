@@ -1,6 +1,7 @@
 import os
 import sys
-from typing import Tuple, Generator, BinaryIO, TextIO
+from jina import DocumentArray, Document
+from typing import Tuple, Generator, BinaryIO, TextIO, Union, List
 
 import numpy as np
 
@@ -10,6 +11,23 @@ BYTE_PADDING = 4
 DUMP_DTYPE = np.float64
 
 logger = JinaLogger(__name__)
+
+
+def _doc_without_embedding(d):
+    new_doc = Document(d, copy=True)
+    new_doc.ClearField('embedding')
+    new_doc.update_content_hash()
+    return new_doc.SerializeToString()
+
+
+def _generator_from_docs(docs):
+    for doc in docs:
+        yield doc.id, doc.embedding, _doc_without_embedding(doc)
+
+
+def dump_docs(docs: Union[DocumentArray, List[Document]], path: str, shards: int):
+    """dump a DocumentArray"""
+    export_dump_streaming(path, shards, len(docs), _generator_from_docs(docs))
 
 
 def export_dump_streaming(
