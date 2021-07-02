@@ -99,9 +99,10 @@ def _write_shard_files(
 ):
     id_, vec, meta = next(data)
     # need to ensure compatibility to read time
-    vec = vec.astype(DUMP_DTYPE)
-    vec_bytes = vec.tobytes()
-    vectors_fh.write(len(vec_bytes).to_bytes(BYTE_PADDING, sys.byteorder) + vec_bytes)
+    if vec is not None:
+        vec = vec.astype(DUMP_DTYPE)
+        vec_bytes = vec.tobytes()
+        vectors_fh.write(len(vec_bytes).to_bytes(BYTE_PADDING, sys.byteorder) + vec_bytes)
     metas_fh.write(len(meta).to_bytes(BYTE_PADDING, sys.byteorder) + meta)
     ids_fh.write(id_ + '\n')
 
