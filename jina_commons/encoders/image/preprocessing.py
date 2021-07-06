@@ -16,12 +16,12 @@ def load_image(blob: 'np.ndarray', channel_axis: int = -1):
     """
     Load an image array and return a `PIL.Image` object.
     """
-    img = _move_channel_axis(blob, channel_axis)
+    img = move_channel_axis(blob, channel_axis)
     return Image.fromarray(img.astype('uint8'))
 
 
-def _move_channel_axis(img: 'np.ndarray', channel_axis_to_move: int,
-                       target_channel_axis: int = -1) -> 'np.ndarray':
+def move_channel_axis(img: 'np.ndarray', channel_axis_to_move: int,
+                      target_channel_axis: int = -1) -> 'np.ndarray':
     """
     Ensure the color channel axis is the default axis.
     """
