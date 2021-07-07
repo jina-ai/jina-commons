@@ -76,3 +76,16 @@ def test_batching(
     )
     for batch, expected_size in zip(generator, expected_sizes):
         assert len(batch) == expected_size, f'Expected size {expected_size} but got {len(batch)}'
+
+
+def test_docs_array_none():
+    docs = None
+    generator = get_docs_batch_generator(
+        docs,
+        traversal_path=['r'],
+        batch_size=1
+    )
+    count = 0
+    for count, item in enumerate(generator):
+        pass
+    assert count == 0
