@@ -10,9 +10,9 @@ def _batch_generator(data: DocumentArray, batch_size: int) -> Generator[Document
 
 
 def get_docs_batch_generator(
-    docs: DocumentArray,
-    traversal_path: List[str],
-    batch_size: int,
+    docs: Optional[DocumentArray] = None,
+    traversal_path: List[str] = None,
+    batch_size: int = 32,
     needs_attr: Optional[str] = None
 ) -> Generator[DocumentArray, None, None]:
     """
@@ -27,13 +27,16 @@ def get_docs_batch_generator(
     >>>     ...
 
     :param docs: A document array.
-    :param traversal_path: Specifies along which "axis" the document shall be traversed.
-    :param batch_size: Size of each generated batch (except the last one, which might be smaller)
+    :param traversal_path: Specifies along which "axis" the document shall be traversed. (defaults to ['r'])
+    :param batch_size: Size of each generated batch (except the last one, which might be smaller, default: 32)
     :param needs_attr: Optionally, you can filter out docs which don't have this attribute
 
     :return: Generator
     """
+    traversal_path = traversal_path or ['r']
     assert batch_size > 0, 'Batch size must be greater zero.'
+    if docs is None:
+        docs = DocumentArray()
     flat_docs = docs.traverse_flat(traversal_path)
     if needs_attr:
         flat_docs = [doc for doc in flat_docs if getattr(doc, needs_attr) is not None]
