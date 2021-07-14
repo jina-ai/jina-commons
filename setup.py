@@ -15,4 +15,5 @@ setuptools.setup(
     packages=find_packages(include='jina_commons.*'),
     python_requires=">=3.7",
     zip_safe=False,
+    install_requires=[open('requirements.txt').readlines()]
 )
