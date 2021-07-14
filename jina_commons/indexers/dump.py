@@ -1,21 +1,22 @@
+import pickle
 import os
 import sys
-from jina import DocumentArray, Document
 from typing import Tuple, Generator, BinaryIO, TextIO, Union, List
 
 import numpy as np
-
+from jina import DocumentArray, Document
 from jina.logging.logger import JinaLogger
 
 BYTE_PADDING = 4
 DUMP_DTYPE = np.float64
 
 logger = JinaLogger(__name__)
+DTYPE_FILE = 'dtype'
 
 
 def _doc_without_embedding(d):
     new_doc = Document(d, copy=True)
-    new_doc.ClearField('embedding')
+    new_doc.ClearField("embedding")
     new_doc.update_content_hash()
     return new_doc.SerializeToString()
 
@@ -25,9 +26,14 @@ def _generator_from_docs(docs):
         yield doc.id, doc.embedding, _doc_without_embedding(doc)
 
 
-def dump_docs(docs: Union[DocumentArray, List[Document]], path: str, shards: int):
+def dump_docs(
+    docs: Union[DocumentArray, List[Document]],
+    path: str,
+    shards: int,
+    dtype: type = DUMP_DTYPE,
+):
     """dump a DocumentArray"""
-    export_dump_streaming(path, shards, len(docs), _generator_from_docs(docs))
+    export_dump_streaming(path, shards, len(docs), _generator_from_docs(docs), dtype)
 
 
 def export_dump_streaming(
@@ -35,6 +41,7 @@ def export_dump_streaming(
     shards: int,
     size: int,
     data: Generator[Tuple[str, np.array, bytes], None, None],
+    dtype: type = DUMP_DTYPE,
 ):
     """Export the data to a path, based on sharding,
 
@@ -42,9 +49,10 @@ def export_dump_streaming(
     :param shards: the nr of shards this pea is part of
     :param size: total amount of entries
     :param data: the generator of the data (ids, vectors, metadata)
+    :param dtype: the datatype to store the vectors
     """
-    logger.info(f'Dumping {size} docs to {path} for {shards} shards')
-    _handle_dump(data, path, shards, size)
+    logger.info(f"Dumping {size} docs to {path} for {shards} shards (dtype = {dtype})")
+    _handle_dump(data, path, shards, size, dtype)
 
 
 def _handle_dump(
@@ -52,12 +60,15 @@ def _handle_dump(
     path: str,
     shards: int,
     size: int,
+    dtype: type,
 ):
     if not os.path.exists(path):
         os.makedirs(path)
 
     # directory must be empty to be safe
     if not os.listdir(path):
+        # we need to know what the precision was at import time
+        pickle.dump(dtype, open(os.path.join(path, DTYPE_FILE), 'wb'))
         size_per_shard = size // shards
         extra = size % shards
         shard_range = list(range(shards))
@@ -66,10 +77,10 @@ def _handle_dump(
                 size_this_shard = size_per_shard + extra
             else:
                 size_this_shard = size_per_shard
-            _write_shard_data(data, path, shard_id, size_this_shard)
+            _write_shard_data(data, path, shard_id, size_this_shard, dtype)
     else:
         raise Exception(
-            f'path for dump {path} contains data. Please empty. Not dumping...'
+            f"path for dump {path} contains data. Please empty. Not dumping..."
         )
 
 
@@ -78,16 +89,17 @@ def _write_shard_data(
     path: str,
     shard_id: int,
     size_this_shard: int,
+    dtype: type,
 ):
     shard_path = os.path.join(path, str(shard_id))
     shard_docs_written = 0
     os.makedirs(shard_path)
     vectors_fp, metas_fp, ids_fp = _get_file_paths(shard_path)
-    with open(vectors_fp, 'wb') as vectors_fh, open(metas_fp, 'wb') as metas_fh, open(
-        ids_fp, 'w'
+    with open(vectors_fp, "wb") as vectors_fh, open(metas_fp, "wb") as metas_fh, open(
+        ids_fp, "w"
     ) as ids_fh:
         while shard_docs_written < size_this_shard:
-            _write_shard_files(data, ids_fh, metas_fh, vectors_fh)
+            _write_shard_files(data, ids_fh, metas_fh, vectors_fh, dtype)
             shard_docs_written += 1
 
 
@@ -96,14 +108,15 @@ def _write_shard_files(
     ids_fh: TextIO,
     metas_fh: BinaryIO,
     vectors_fh: BinaryIO,
+    dtype: type,
 ):
     id_, vec, meta = next(data)
     # need to ensure compatibility to read time
-    vec = vec.astype(DUMP_DTYPE)
+    vec = vec.astype(dtype)
     vec_bytes = vec.tobytes()
     vectors_fh.write(len(vec_bytes).to_bytes(BYTE_PADDING, sys.byteorder) + vec_bytes)
     metas_fh.write(len(meta).to_bytes(BYTE_PADDING, sys.byteorder) + meta)
-    ids_fh.write(id_ + '\n')
+    ids_fh.write(id_ + "\n")
 
 
 def import_vectors(path: str, pea_id: str):
@@ -113,10 +126,13 @@ def import_vectors(path: str, pea_id: str):
     :param pea_id: the id of the pea (as part of the shards)
     :return: the generators for the ids and for the vectors
     """
-    logger.info(f'Importing ids and vectors from {path} for pea_id {pea_id}')
+    logger.info(f"Importing ids and vectors from {path} for pea_id {pea_id}")
+    # we saved this at dump time
+    dtype_path = os.path.join(path, DTYPE_FILE)
+    dtype = pickle.load(open(dtype_path, 'rb'))
     path = os.path.join(path, pea_id)
     ids_gen = _ids_gen(path)
-    vecs_gen = _vecs_gen(path)
+    vecs_gen = _vecs_gen(path, dtype)
     return ids_gen, vecs_gen
 
 
@@ -127,7 +143,7 @@ def import_metas(path: str, pea_id: str):
     :param pea_id: the id of the pea (as part of the shards)
     :return: the generators for the ids and for the metadata
     """
-    logger.info(f'Importing ids and metadata from {path} for pea_id {pea_id}')
+    logger.info(f"Importing ids and metadata from {path} for pea_id {pea_id}")
     path = os.path.join(path, pea_id)
     ids_gen = _ids_gen(path)
     metas_gen = _metas_gen(path)
@@ -135,28 +151,25 @@ def import_metas(path: str, pea_id: str):
 
 
 def _ids_gen(path: str):
-    with open(os.path.join(path, 'ids'), 'r') as ids_fh:
+    with open(os.path.join(path, "ids"), "r") as ids_fh:
         for l in ids_fh:
             yield l.strip()
 
 
-def _vecs_gen(path: str):
-    with open(os.path.join(path, 'vectors'), 'rb') as vectors_fh:
+def _vecs_gen(path: str, dtype: type):
+    with open(os.path.join(path, "vectors"), "rb") as vectors_fh:
         while True:
             next_size = vectors_fh.read(BYTE_PADDING)
             next_size = int.from_bytes(next_size, byteorder=sys.byteorder)
             if next_size:
-                vec = np.frombuffer(
-                    vectors_fh.read(next_size),
-                    dtype=DUMP_DTYPE,
-                )
+                vec = np.frombuffer(vectors_fh.read(next_size), dtype)
                 yield vec
             else:
                 break
 
 
 def _metas_gen(path: str):
-    with open(os.path.join(path, 'metas'), 'rb') as metas_fh:
+    with open(os.path.join(path, "metas"), "rb") as metas_fh:
         while True:
             next_size = metas_fh.read(BYTE_PADDING)
             next_size = int.from_bytes(next_size, byteorder=sys.byteorder)
@@ -168,7 +181,7 @@ def _metas_gen(path: str):
 
 
 def _get_file_paths(shard_path: str):
-    vectors_fp = os.path.join(shard_path, 'vectors')
-    metas_fp = os.path.join(shard_path, 'metas')
-    ids_fp = os.path.join(shard_path, 'ids')
+    vectors_fp = os.path.join(shard_path, "vectors")
+    metas_fp = os.path.join(shard_path, "metas")
+    ids_fp = os.path.join(shard_path, "ids")
     return vectors_fp, metas_fp, ids_fp
