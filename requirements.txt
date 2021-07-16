@@ -1,1 +1,1 @@
-jina[standard]~=2.0
+jina~=2.0
