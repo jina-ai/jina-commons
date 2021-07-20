@@ -9,7 +9,7 @@ A collection of shared function for Jina Executor
 Add to your Executors `requirements.txt`
 
 ```text
-git+git://github.com/jina-ai/jina-commons
+git+https://github.com/jina-ai/jina-commons.git
 ```
 
 #### Import
