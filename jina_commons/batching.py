@@ -31,7 +31,7 @@ def get_docs_batch_generator(
     :param docs: A document array.
     :param traversal_path: Specifies along which "axis" the document shall be traversed. (defaults to ['r'])
     :param batch_size: Size of each generated batch (except the last one, which might be smaller, default: 32)
-    :param needs_attr: Optionally, you can filter out docs which don't have this content attribute. 
+    :param needs_attr: Optionally, you can filter out docs which don't have this content attribute
 
     :return: Generator
     """
