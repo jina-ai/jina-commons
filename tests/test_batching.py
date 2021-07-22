@@ -1,6 +1,7 @@
 # test the batching module
-from typing import List
+from typing import Any, List
 
+import numpy as np
 import pytest
 from jina import DocumentArray, Document
 from pytest_lazyfixture import lazy_fixture
@@ -78,16 +79,34 @@ def test_docs_array_none():
     assert count == 0
 
 
-def test_needs_text_empty():
+@pytest.mark.parametrize(
+    ['attr_name', 'attr_value'],
+    [
+        ('text', 'text'),
+        ('buffer', b'text'),
+        ('blob', np.array([1])),
+        ('uri', 'https://uri'),
+        ('content', 'text'),
+        ('embedding', np.array([1])),
+    ],
+)
+def test_needs_attr_empty(attr_name: str, attr_value: Any):
     """
-    Test the case where needs_attr='text', and empty documents are part of the array
+    Test that filtering by attribute works properly for empty documents
     """
 
-    docs = DocumentArray([Document(), Document(text='text')])
+    docs = DocumentArray([Document(), Document()])
+    setattr(docs[1], attr_name, attr_value)
     generator = get_docs_batch_generator(
-        docs, traversal_path=['r'], batch_size=1, needs_attr='text'
+        docs, traversal_path=['r'], batch_size=1, needs_attr=attr_name
     )
     filtered_docs = list(generator)
 
     assert len(filtered_docs) == 1 and len(filtered_docs[0]) == 1
-    assert filtered_docs[0][0].text == 'text'
+
+    if attr_name in ['blob', 'embedding']:
+        np.testing.assert_array_equal(
+            getattr(filtered_docs[0][0], attr_name), attr_value
+        )
+    else:
+        assert getattr(filtered_docs[0][0], attr_name) == attr_value

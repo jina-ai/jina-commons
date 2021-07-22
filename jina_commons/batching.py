@@ -31,7 +31,7 @@ def get_docs_batch_generator(
     :param docs: A document array.
     :param traversal_path: Specifies along which "axis" the document shall be traversed. (defaults to ['r'])
     :param batch_size: Size of each generated batch (except the last one, which might be smaller, default: 32)
-    :param needs_attr: Optionally, you can filter out docs which don't have this attribute
+    :param needs_attr: Optionally, you can filter out docs which don't have this content attribute. 
 
     :return: Generator
     """
@@ -42,7 +42,7 @@ def get_docs_batch_generator(
     flat_docs = docs.traverse_flat(traversal_path)
     if needs_attr:
         # Text is equal to empty string (not None) by default
-        if needs_attr == 'text':
+        if needs_attr in ['text', 'uri', 'buffer']:
             flat_docs = [doc for doc in flat_docs if getattr(doc, needs_attr)]
         else:
             flat_docs = [
