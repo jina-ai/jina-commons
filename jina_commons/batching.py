@@ -4,16 +4,18 @@ from typing import List, Generator, Optional
 from jina import DocumentArray
 
 
-def _batch_generator(data: DocumentArray, batch_size: int) -> Generator[DocumentArray, None, None]:
+def _batch_generator(
+    data: DocumentArray, batch_size: int
+) -> Generator[DocumentArray, None, None]:
     for i in range(0, len(data), batch_size):
-        yield data[i: i + batch_size]
+        yield data[i : i + batch_size]
 
 
 def get_docs_batch_generator(
     docs: Optional[DocumentArray] = None,
     traversal_path: List[str] = None,
     batch_size: int = 32,
-    needs_attr: Optional[str] = None
+    needs_attr: Optional[str] = None,
 ) -> Generator[DocumentArray, None, None]:
     """
     Creates a `Generator` that yields `DocumentArray` of size `batch_size` until `docs` is fully traversed along
@@ -39,7 +41,13 @@ def get_docs_batch_generator(
         docs = DocumentArray()
     flat_docs = docs.traverse_flat(traversal_path)
     if needs_attr:
-        flat_docs = [doc for doc in flat_docs if getattr(doc, needs_attr) is not None]
+        # Text is equal to empty string (not None) by default
+        if needs_attr in ['text', 'uri', 'buffer']:
+            flat_docs = [doc for doc in flat_docs if getattr(doc, needs_attr)]
+        else:
+            flat_docs = [
+                doc for doc in flat_docs if getattr(doc, needs_attr) is not None
+            ]
 
     filtered_docs = DocumentArray([doc for doc in flat_docs if doc is not None])
 
