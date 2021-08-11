@@ -1,9 +1,11 @@
+import functools
 import os
 import time
 from typing import List
 
 from jina import DocumentArray
 from jina.logging.logger import JinaLogger
+from jina.enums import LogVerbosity
 
 
 def _get_non_empty_fields_doc_array(docs: DocumentArray) -> List[str]:
@@ -34,25 +36,28 @@ def add_request_logger(logger):
     :param logger: The logger you want to use
     """
     def decorator(function):
+        @functools.wraps(function)
         def wrapper(self, docs, parameters, **kwargs):
-
-            if os.environ.get('JINA_LOG_LEVEL') in ['info', None]:
+            verbose_level = os.environ.get('JINA_LOG_LEVEL', None)
+            verbose_level = LogVerbosity.from_string(verbose_level) if verbose_level else None
+            if verbose_level is None or verbose_level > LogVerbosity.DEBUG:
                 return function(self, docs, parameters, **kwargs)
+
             if not docs:
-                logger.info('Docs is None. Nothing to monitor')
+                logger.debug('Docs is None. Nothing to monitor')
                 return function(self, docs, parameters, **kwargs)
 
-            logger.info(f'📄 Received request containing {len(docs)} documents.')
-            logger.info(f'📕 Received parameters dictionary: {parameters}')
+            logger.debug(f'📄 Received request containing {len(docs)} documents.')
+            logger.debug(f'📕 Received parameters dictionary: {parameters}')
 
             if len(docs) > 0:
                 non_empty_fields = _get_non_empty_fields_doc_array(docs)
-                logger.info(f'🏷 Non-empty fields {non_empty_fields}')
+                logger.debug(f'🏷 Non-empty fields {non_empty_fields}')
 
             start_time = time.time()
             result = function(self, docs, parameters, **kwargs)
             end_time = time.time()
-            logger.info(f'⏱ Elapsed time for request {end_time - start_time} seconds.')
+            logger.debug(f'⏱ Elapsed time for request {end_time - start_time} seconds.')
             return result
 
         return wrapper
