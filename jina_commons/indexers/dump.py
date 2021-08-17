@@ -1,11 +1,12 @@
 import os
 import sys
-from jina import DocumentArray, Document
+import urllib
 from typing import Tuple, Generator, BinaryIO, TextIO, Union, List
 
 import numpy as np
-
+from jina import DocumentArray, Document
 from jina.logging.logger import JinaLogger
+from psycopg2 import connect
 
 BYTE_PADDING = 4
 DUMP_DTYPE = np.float64
@@ -31,10 +32,10 @@ def dump_docs(docs: Union[DocumentArray, List[Document]], path: str, shards: int
 
 
 def export_dump_streaming(
-    path: str,
-    shards: int,
-    size: int,
-    data: Generator[Tuple[str, np.array, bytes], None, None],
+        path: str,
+        shards: int,
+        size: int,
+        data: Generator[Tuple[str, np.array, bytes], None, None],
 ):
     """Export the data to a path, based on sharding,
 
@@ -48,10 +49,10 @@ def export_dump_streaming(
 
 
 def _handle_dump(
-    data: Generator[Tuple[str, np.array, bytes], None, None],
-    path: str,
-    shards: int,
-    size: int,
+        data: Generator[Tuple[str, np.array, bytes], None, None],
+        path: str,
+        shards: int,
+        size: int,
 ):
     if not os.path.exists(path):
         os.makedirs(path)
@@ -74,17 +75,17 @@ def _handle_dump(
 
 
 def _write_shard_data(
-    data: Generator[Tuple[str, np.array, bytes], None, None],
-    path: str,
-    shard_id: int,
-    size_this_shard: int,
+        data: Generator[Tuple[str, np.array, bytes], None, None],
+        path: str,
+        shard_id: int,
+        size_this_shard: int,
 ):
     shard_path = os.path.join(path, str(shard_id))
     shard_docs_written = 0
     os.makedirs(shard_path)
     vectors_fp, metas_fp, ids_fp = _get_file_paths(shard_path)
     with open(vectors_fp, 'wb') as vectors_fh, open(metas_fp, 'wb') as metas_fh, open(
-        ids_fp, 'w'
+            ids_fp, 'w'
     ) as ids_fh:
         while shard_docs_written < size_this_shard:
             _write_shard_files(data, ids_fh, metas_fh, vectors_fh)
@@ -92,10 +93,10 @@ def _write_shard_data(
 
 
 def _write_shard_files(
-    data: Generator[Tuple[str, np.array, bytes], None, None],
-    ids_fh: TextIO,
-    metas_fh: BinaryIO,
-    vectors_fh: BinaryIO,
+        data: Generator[Tuple[str, np.array, bytes], None, None],
+        ids_fh: TextIO,
+        metas_fh: BinaryIO,
+        vectors_fh: BinaryIO,
 ):
     id_, vec, meta = next(data)
     # need to ensure compatibility to read time
@@ -107,18 +108,61 @@ def _write_shard_files(
     ids_fh.write(id_ + '\n')
 
 
-def import_vectors(path: str, pea_id: str):
+def _import_vectors_psql(path, shard_ids):
+    # see https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
+    connection_string = urllib.parse.urlparse(path)
+    if connection_string.hostname is None or \
+            connection_string.port is None or \
+            connection_string.username is None or \
+            connection_string.password is None or \
+            connection_string.path is None or \
+            'table=' not in connection_string.query:
+        raise ValueError(
+            'Missing one required parameter in postgres path. Must be like: "postgres://username:password@host:port/dbname?table=table_name"')
+    connection = connect(
+        host=connection_string.hostname,
+        port=connection_string.port,
+        user=connection_string.username,
+        password=connection_string.password,
+        dbname=connection_string.path.strip('/')
+    )
+    cursor = connection.cursor()
+    cursor.execute(
+        f'SELECT ID, DOC FROM {connection_string.query.split("table=")[1]} WHERE SHARD IN (",".join(shard_ids))'
+    )
+    records = cursor.fetchall()
+    for rec in records:
+        doc = Document(bytes(rec[1]))
+        vec = doc.embedding
+        metas = doc_without_embedding(doc)
+        yield rec[0], vec, metas
+
+
+def _is_psql(path):
+    # see https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
+    connection_string = urllib.parse.urlparse(path)
+    return connection_string.scheme == 'postgres' or connection_string.scheme == 'postgresql'
+
+
+def import_vectors(path: str, pea_id: str = None, shard_ids: List[str] = None):
     """Import id and vectors
 
     :param path: the path to the dump
     :param pea_id: the id of the pea (as part of the shards)
+    :param shard_ids: the ids of the shards to obtain (in PSQL
     :return: the generators for the ids and for the vectors
     """
-    logger.info(f'Importing ids and vectors from {path} for pea_id {pea_id}')
-    path = os.path.join(path, pea_id)
-    ids_gen = _ids_gen(path)
-    vecs_gen = _vecs_gen(path)
-    return ids_gen, vecs_gen
+    # TODO check if str is PSQL connection string
+    # TODO maybe pea_id is pea_ids ?
+    # else below:
+    if _is_psql(path) and isinstance(shard_ids, list) and isinstance(shard_ids[0], str):
+        return _import_vectors_psql(path, shard_ids)
+    else:
+        logger.info(f'Importing ids and vectors from {path} for pea_id {pea_id}')
+        path = os.path.join(path, pea_id)
+        ids_gen = _ids_gen(path)
+        vecs_gen = _vecs_gen(path)
+        return ids_gen, vecs_gen
 
 
 def import_metas(path: str, pea_id: str):
