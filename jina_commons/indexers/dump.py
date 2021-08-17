@@ -1,5 +1,7 @@
 import os
 import sys
+
+from tqdm.auto import tqdm
 from jina import DocumentArray, Document
 from typing import Tuple, Generator, BinaryIO, TextIO, Union, List
 
@@ -86,9 +88,12 @@ def _write_shard_data(
     with open(vectors_fp, 'wb') as vectors_fh, open(metas_fp, 'wb') as metas_fh, open(
         ids_fp, 'w'
     ) as ids_fh:
+        progress = tqdm(total=size_this_shard)
         while shard_docs_written < size_this_shard:
             _write_shard_files(data, ids_fh, metas_fh, vectors_fh)
             shard_docs_written += 1
+            progress.update(1)
+        progress.close()
 
 
 def _write_shard_files(
