@@ -106,7 +106,6 @@ def _write_shard_files(
     # need to ensure compatibility to read time
     if vec is not None:
         if isinstance(vec, np.ndarray):
-            print("here")
             vec = vec.astype(DUMP_DTYPE)
             vec = vec.tobytes()
         vectors_fh.write(len(vec).to_bytes(BYTE_PADDING, sys.byteorder) + vec)
