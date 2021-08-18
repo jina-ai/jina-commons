@@ -3,7 +3,7 @@ import sys
 
 from tqdm.auto import tqdm
 from jina import DocumentArray, Document
-from typing import Tuple, Generator, BinaryIO, TextIO, Union, List
+from typing import Tuple, Generator, BinaryIO, TextIO, Union, List, Optional
 
 import numpy as np
 
@@ -11,6 +11,13 @@ from jina.logging.logger import JinaLogger
 
 BYTE_PADDING = 4
 DUMP_DTYPE = np.float64
+GENERATOR_TYPE = Generator[
+    Tuple[str, Union[np.ndarray, bytes], Optional[bytes]], None, None
+]
+IDS_GENERATOR = Generator[str, None, None]
+VECS_GENERATOR = Generator[Optional[np.ndarray], None, None]
+METAS_GENERATOR = Generator[Optional[bytes], None, None]
+EMPTY_BYTES = b''
 
 logger = JinaLogger(__name__)
 
@@ -36,7 +43,7 @@ def export_dump_streaming(
     path: str,
     shards: int,
     size: int,
-    data: Generator[Tuple[str, np.array, bytes], None, None],
+    data: GENERATOR_TYPE,
 ):
     """Export the data to a path, based on sharding,
 
@@ -50,7 +57,7 @@ def export_dump_streaming(
 
 
 def _handle_dump(
-    data: Generator[Tuple[str, np.array, bytes], None, None],
+    data: GENERATOR_TYPE,
     path: str,
     shards: int,
     size: int,
@@ -76,7 +83,7 @@ def _handle_dump(
 
 
 def _write_shard_data(
-    data: Generator[Tuple[str, np.array, bytes], None, None],
+    data: GENERATOR_TYPE,
     path: str,
     shard_id: int,
     size_this_shard: int,
@@ -97,18 +104,22 @@ def _write_shard_data(
 
 
 def _write_shard_files(
-    data: Generator[Tuple[str, np.array, bytes], None, None],
+    data: GENERATOR_TYPE,
     ids_fh: TextIO,
     metas_fh: BinaryIO,
     vectors_fh: BinaryIO,
 ):
     id_, vec, meta = next(data)
     # need to ensure compatibility to read time
-    if vec is not None:
-        if isinstance(vec, np.ndarray):
+    if vec is None:
+        vec = EMPTY_BYTES
+    if isinstance(vec, np.ndarray):
+        if vec.dtype != DUMP_DTYPE:
             vec = vec.astype(DUMP_DTYPE)
-            vec = vec.tobytes()
-        vectors_fh.write(len(vec).to_bytes(BYTE_PADDING, sys.byteorder) + vec)
+        vec = vec.tobytes()
+    vectors_fh.write(len(vec).to_bytes(BYTE_PADDING, sys.byteorder) + vec)
+    if meta is None:
+        meta = EMPTY_BYTES
     metas_fh.write(len(meta).to_bytes(BYTE_PADDING, sys.byteorder) + meta)
     ids_fh.write(id_ + '\n')
 
@@ -141,35 +152,42 @@ def import_metas(path: str, pea_id: str):
     return ids_gen, metas_gen
 
 
-def _ids_gen(path: str):
+def _ids_gen(path: str) -> IDS_GENERATOR:
     with open(os.path.join(path, 'ids'), 'r') as ids_fh:
         for l in ids_fh:
             yield l.strip()
 
 
-def _vecs_gen(path: str):
+def _vecs_gen(path: str) -> VECS_GENERATOR:
     with open(os.path.join(path, 'vectors'), 'rb') as vectors_fh:
         while True:
             next_size = vectors_fh.read(BYTE_PADDING)
             next_size = int.from_bytes(next_size, byteorder=sys.byteorder)
             if next_size:
-                vec = np.frombuffer(
-                    vectors_fh.read(next_size),
-                    dtype=DUMP_DTYPE,
-                )
-                yield vec
+                vec_bytes = vectors_fh.read(next_size)
+                if vec_bytes != EMPTY_BYTES:
+                    vec = np.frombuffer(
+                        vec_bytes,
+                        dtype=DUMP_DTYPE,
+                    )
+                    yield vec
+                else:
+                    yield None
             else:
                 break
 
 
-def _metas_gen(path: str):
+def _metas_gen(path: str) -> METAS_GENERATOR:
     with open(os.path.join(path, 'metas'), 'rb') as metas_fh:
         while True:
             next_size = metas_fh.read(BYTE_PADDING)
             next_size = int.from_bytes(next_size, byteorder=sys.byteorder)
             if next_size:
                 meta = metas_fh.read(next_size)
-                yield meta
+                if meta != EMPTY_BYTES:
+                    yield meta
+                else:
+                    yield None
             else:
                 break
 
