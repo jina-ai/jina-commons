@@ -25,7 +25,10 @@ logger = JinaLogger(__name__)
 def _doc_without_embedding(d):
     new_doc = Document(d, copy=True)
     new_doc.ClearField('embedding')
-    new_doc.update_content_hash()
+    try:
+        new_doc.update_content_hash()
+    except Exception as e:
+        pass # no need to update content hash since diff Jina versions handle it differently
     return new_doc.SerializeToString()
 
 
