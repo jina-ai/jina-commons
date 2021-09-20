@@ -38,7 +38,8 @@ def get_docs_batch_generator(
     """
     warnings.warn('Since Jina 2.1.1 `.batch` is a built-in function for DA & DAM in the core, please consider migrate '
                   'your code to use `.batch`. '
-                  'More info https://docs.jina.ai/api/jina.types.arrays.traversable/?highlight=batch#jina.types.arrays.traversable.TraversableSequence.batch')
+                  'More info https://docs.jina.ai/api/jina.types.arrays.traversable/?highlight=batch#jina.types.arrays.traversable.TraversableSequence.batch',
+                  DeprecationWarning)
 
     traversal_path = traversal_path or ['r']
     assert batch_size > 0, 'Batch size must be greater zero.'
