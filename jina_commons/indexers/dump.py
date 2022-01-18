@@ -155,6 +155,21 @@ def import_metas(path: str, pea_id: str):
     return ids_gen, metas_gen
 
 
+def import_metas_and_vectors(path: str, pea_id: str):
+    """Import id metadata and vectors
+
+    :param path: the path to the dump
+    :param pea_id: the id of the pea (as part of the shards)
+    :return: the generators for the ids, for the metadata, and for the vectors
+    """
+    logger.info(f'Importing ids and vectors from {path} for pea_id {pea_id}')
+    path = os.path.join(path, pea_id)
+    ids_gen = _ids_gen(path)
+    metas_gen = _metas_gen(path)
+    vecs_gen = _vecs_gen(path)
+    return ids_gen, metas_gen, vecs_gen
+
+
 def _ids_gen(path: str) -> IDS_GENERATOR:
     with open(os.path.join(path, 'ids'), 'r') as ids_fh:
         for l in ids_fh:
